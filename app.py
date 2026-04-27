@@ -93,6 +93,14 @@ def reset_game():
     conn.commit()
     conn.close()
 
+def leave_slot(slot, session_id):
+    """Clears a player's slot."""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE lobby SET session_id = NULL, move = NULL, status = 'empty', last_active = 0 WHERE slot = ? AND session_id = ?", (slot, session_id))
+    conn.commit()
+    conn.close()
+
 # --- App Logic ---
 st.set_page_config(page_title="Multiplayer RPS Arena", page_icon="🪨", layout="centered")
 
@@ -251,6 +259,11 @@ if my_role:
     st.header(f"🎮 YOU ARE PLAYER {my_role}")
     my_data = p1 if my_role == 1 else p2
     
+    # Connection controls
+    if st.button("🚪 Leave Arena (Free up Slot)"):
+        leave_slot(my_role, session_id)
+        st.rerun()
+
     if not my_data['move']:
         st.write("Pick your move:")
         c1, c2, c3 = st.columns(3)
