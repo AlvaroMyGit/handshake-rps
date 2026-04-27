@@ -174,6 +174,12 @@ if my_role:
 st.title("🪨 Rock Paper Scissors Arena ✂️")
 st.caption(f"My Session: `{session_id[:8]}...` | My Role: `{f'Player {my_role}' if my_role else 'Spectator'}`")
 
+# Result Calculation
+# BOTH players must be connected AND both must have moves
+p1_ready = p1['session_id'] and p1['move']
+p2_ready = p2['session_id'] and p2['move']
+can_resolve = p1_ready and p2_ready
+
 # Arena Dashboard
 col1, mid, col2 = st.columns([1, 0.4, 1])
 
@@ -182,7 +188,9 @@ with col1:
     st.subheader("Player 1")
     if p1['session_id']:
         st.success("🟢 Connected")
-        if p1['move']:
+        if can_resolve:
+            st.info(f"🎭 {p1['move']}")
+        elif p1['move']:
             st.info("✅ Move Locked")
         else:
             st.warning("⏳ Thinking...")
@@ -198,7 +206,9 @@ with col2:
     st.subheader("Player 2")
     if p2['session_id']:
         st.success("🟢 Connected")
-        if p2['move']:
+        if can_resolve:
+            st.info(f"🎭 {p2['move']}")
+        elif p2['move']:
             st.info("✅ Move Locked")
         else:
             st.warning("⏳ Thinking...")
@@ -207,12 +217,6 @@ with col2:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
-
-# Result Calculation
-# BOTH players must be connected AND both must have moves
-p1_ready = p1['session_id'] and p1['move']
-p2_ready = p2['session_id'] and p2['move']
-can_resolve = p1_ready and p2_ready
 
 if can_resolve:
     m1 = p1['move']
