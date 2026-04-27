@@ -7,28 +7,26 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 # --- Database Setup ---
 DB_NAME = "game_state.db"
 
+import time
+
 @st.cache_resource
 def setup_game():
     """Initializes DB and wipes lobby once per server start."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    # Dropping for schema update and fresh start
+    c.execute("DROP TABLE IF EXISTS lobby")
     c.execute('''
-        CREATE TABLE IF NOT EXISTS lobby (
+        CREATE TABLE lobby (
             slot INTEGER PRIMARY KEY,
             session_id TEXT,
             move TEXT,
-            status TEXT
+            status TEXT,
+            last_active REAL
         )
     ''')
-    # Initialize 2 slots if empty
-    c.execute("SELECT COUNT(*) FROM lobby")
-    if c.fetchone()[0] == 0:
-        c.execute("INSERT INTO lobby (slot, session_id, move, status) VALUES (1, NULL, NULL, 'empty')")
-        c.execute("INSERT INTO lobby (slot, session_id, move, status) VALUES (2, NULL, NULL, 'empty')")
-    else:
-        # If slots exist, just clear them (this is the startup reset)
-        c.execute("UPDATE lobby SET session_id = NULL, move = NULL, status = 'empty'")
-    
+    c.execute("INSERT INTO lobby (slot, session_id, move, status, last_active) VALUES (1, NULL, NULL, 'empty', 0)")
+    c.execute("INSERT INTO lobby (slot, session_id, move, status, last_active) VALUES (2, NULL, NULL, 'empty', 0)")
     conn.commit()
     conn.close()
     return True
@@ -37,8 +35,15 @@ def get_lobby():
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM lobby ORDER BY slot", conn)
     conn.close()
-    # Replace NaN with None (object type ensures it stays None)
     return df.astype(object).where(pd.notnull(df), None)
+
+def heart_beat(slot, session_id):
+    """Updates the last_active timestamp for a slot."""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE lobby SET last_active = ? WHERE slot = ? AND session_id = ?", (time.time(), slot, session_id))
+    conn.commit()
+    conn.close()
 
 def claim_slot(slot, session_id):
     conn = sqlite3.connect(DB_NAME)
@@ -47,22 +52,27 @@ def claim_slot(slot, session_id):
     # First, check if this session already owns any slot
     c.execute("SELECT slot FROM lobby WHERE session_id = ?", (session_id,))
     existing_slot = c.fetchone()
-    
     if existing_slot:
         if existing_slot[0] == slot:
             conn.close()
-            return True # Already owns this slot
+            return True
         else:
             conn.close()
-            return False # Owns the OTHER slot, can't claim this one
+            return False
             
-    # If not assigned, check if the target slot is free
-    c.execute("SELECT session_id FROM lobby WHERE slot = ?", (slot,))
-    current_occupant = c.fetchone()[0]
+    # Check if target slot is free OR timed out (10 seconds)
+    c.execute("SELECT session_id, last_active FROM lobby WHERE slot = ?", (slot,))
+    row = c.fetchone()
+    current_occupant = row[0]
+    last_active = row[1]
+    
+    is_timed_out = (time.time() - last_active) > 10 if last_active else True
     
     success = False
-    if current_occupant is None or current_occupant == "":
-        c.execute("UPDATE lobby SET session_id = ?, status = 'occupied' WHERE slot = ?", (session_id, slot))
+    if current_occupant is None or current_occupant == "" or is_timed_out:
+        # Reset move if we are taking over a timed-out slot
+        c.execute("UPDATE lobby SET session_id = ?, status = 'occupied', move = NULL, last_active = ? WHERE slot = ?", 
+                  (session_id, time.time(), slot))
         conn.commit()
         success = True
     
@@ -72,7 +82,7 @@ def claim_slot(slot, session_id):
 def submit_move(slot, move):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("UPDATE lobby SET move = ?, status = 'ready' WHERE slot = ?", (move, slot))
+    c.execute("UPDATE lobby SET move = ?, status = 'ready', last_active = ? WHERE slot = ?", (move, time.time(), slot))
     conn.commit()
     conn.close()
 
@@ -155,6 +165,10 @@ print(f"Lobby State: P1={p1_id} ({lobby_data.iloc[0]['move']}), P2={p2_id} ({lob
 p1 = lobby_data.iloc[0]
 p2 = lobby_data.iloc[1]
 my_role = check_my_role(lobby_data, session_id)
+
+# Keep the connection alive if we are a player
+if my_role:
+    heart_beat(my_role, session_id)
 
 # --- Gameplay Dashboard ---
 st.title("🪨 Rock Paper Scissors Arena ✂️")
