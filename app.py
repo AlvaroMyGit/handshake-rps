@@ -136,7 +136,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-setup_game()
+init_time = setup_game()
 st_autorefresh(interval=1000, key="datarefresh")
 
 ctx = get_script_run_ctx()
@@ -169,7 +169,6 @@ lobby_data = get_lobby()
 # Safe debug print for terminal tracking
 p1_id = str(lobby_data.iloc[0]['session_id'])[:5] if lobby_data.iloc[0]['session_id'] else "None"
 p2_id = str(lobby_data.iloc[1]['session_id'])[:5] if lobby_data.iloc[1]['session_id'] else "None"
-print(f"Lobby State: P1={p1_id} ({lobby_data.iloc[0]['move']}), P2={p2_id} ({lobby_data.iloc[1]['move']})")
 p1 = lobby_data.iloc[0]
 p2 = lobby_data.iloc[1]
 my_role = check_my_role(lobby_data, session_id)
@@ -285,5 +284,7 @@ with st.expander("🛡️ Game Master"):
     if st.button("🚨 NUCLEAR RESET"):
         reset_game()
         st.rerun()
+    st.write("🔍 Raw Database (Debug):")
+    st.dataframe(get_lobby())
 
 st.caption(f"Session ID: {session_id}")
